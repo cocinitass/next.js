@@ -792,5 +792,10 @@
   "791": "Unexpected match for a pathname \"%s\" with a param \"%s\" of type \"%s\"",
   "792": "Unexpected empty path segments match for a pathname \"%s\" with param \"%s\" of type \"%s\"",
   "793": "No value found for segment key: \"%s\"",
-  "794": "Invalid <Link> with <a> child. Please remove <a>.\nLearn more: https://nextjs.org/docs/messages/invalid-new-link-with-extra-anchor"
+  "794": "Invalid <Link> with <a> child. Please remove <a>.\nLearn more: https://nextjs.org/docs/messages/invalid-new-link-with-extra-anchor",
+  "795": "Invariant: page postponed without cache components being enabled",
+  "796": "createPrerenderPathname cannot be called with the prerender-legacy work unit type.",
+  "797": "\\`experimental.ppr\\` cannot be set to \"incremental\" as cache components does not support it. Please remove it from %s.",
+  "798": "Invariant: cache components cannot be enabled in export mode",
+  "799": "\\`experimental.ppr\\` and \\`experimental.cacheComponents\\` cannot be set to different values. Please remove \\`experimental.ppr\\` from %s."
 }
