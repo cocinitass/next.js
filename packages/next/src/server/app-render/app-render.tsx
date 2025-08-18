@@ -57,6 +57,7 @@ import {
   NEXT_ROUTER_SEGMENT_PREFETCH_HEADER,
   NEXT_HMR_REFRESH_HASH_COOKIE,
   NEXT_DID_POSTPONE_HEADER,
+  NEXT_REQUEST_ID_HEADER,
 } from '../../client/components/app-router-headers'
 import { createMetadataContext } from '../../lib/metadata/metadata-context'
 import { createRequestStoreForRender } from '../async-storage/request-store'
@@ -1177,7 +1178,6 @@ async function getRSCPayload(
     // See the comment above the `Preloads` component (below) for why this is part of the payload
     P: <Preloads preloadCallbacks={preloadCallbacks} />,
     b: ctx.sharedContext.buildId,
-    r: ctx.requestId,
     c: prepareInitialCanonicalUrl(url),
     i: !!couldBeIntercepted,
     f: [
@@ -1299,7 +1299,6 @@ async function getErrorRSCPayload(
 
   return {
     b: ctx.sharedContext.buildId,
-    r: ctx.requestId,
     c: prepareInitialCanonicalUrl(url),
     m: undefined,
     i: false,
@@ -1642,6 +1641,8 @@ async function renderToHTMLOrFlightImpl(
       require('next/dist/compiled/nanoid') as typeof import('next/dist/compiled/nanoid')
     ).nanoid()
   }
+
+  res.setHeader(NEXT_REQUEST_ID_HEADER, requestId)
 
   /**
    * Dynamic parameters. E.g. when you visit `/dashboard/vercel` which is rendered by `/dashboard/[slug]` the value will be {"slug": "vercel"}.
@@ -2084,7 +2085,7 @@ async function renderToStream(
   metadata: AppPageRenderResultMetadata,
   devValidatingFallbackParams: OpaqueFallbackRouteParams | null
 ): Promise<ReadableStream<Uint8Array>> {
-  const { assetPrefix, nonce, pagePath, renderOpts } = ctx
+  const { assetPrefix, nonce, pagePath, renderOpts, requestId } = ctx
 
   const {
     basePath,
@@ -2333,7 +2334,8 @@ async function renderToStream(
         const inlinedReactServerDataStream = createInlinedDataReadableStream(
           reactServerResult.tee(),
           nonce,
-          formState
+          formState,
+          requestId
         )
 
         return chainStreams(
@@ -2379,7 +2381,8 @@ async function renderToStream(
           inlinedDataStream: createInlinedDataReadableStream(
             reactServerResult.consume(),
             nonce,
-            formState
+            formState,
+            requestId
           ),
           getServerInsertedHTML,
           getServerInsertedMetadata,
@@ -2447,7 +2450,8 @@ async function renderToStream(
       inlinedDataStream: createInlinedDataReadableStream(
         reactServerResult.consume(),
         nonce,
-        formState
+        formState,
+        requestId
       ),
       isStaticGeneration: generateStaticHTML,
       isBuildTimePrerendering: ctx.workStore.isBuildTimePrerendering === true,
@@ -2595,7 +2599,8 @@ async function renderToStream(
           // render
           reactServerResult.consume(),
           nonce,
-          formState
+          formState,
+          requestId
         ),
         isStaticGeneration: generateStaticHTML,
         isBuildTimePrerendering: ctx.workStore.isBuildTimePrerendering === true,
@@ -3448,6 +3453,7 @@ async function prerenderToStream(
     nonce,
     pagePath,
     renderOpts,
+    requestId,
     workStore,
   } = ctx
 
@@ -4232,7 +4238,8 @@ async function prerenderToStream(
             inlinedDataStream: createInlinedDataReadableStream(
               reactServerResult.consumeAsStream(),
               nonce,
-              formState
+              formState,
+              requestId
             ),
             getServerInsertedHTML,
             getServerInsertedMetadata,
@@ -4475,7 +4482,8 @@ async function prerenderToStream(
             inlinedDataStream: createInlinedDataReadableStream(
               reactServerResult.consumeAsStream(),
               nonce,
-              formState
+              formState,
+              requestId
             ),
             getServerInsertedHTML,
             getServerInsertedMetadata,
@@ -4571,7 +4579,8 @@ async function prerenderToStream(
           inlinedDataStream: createInlinedDataReadableStream(
             reactServerResult.consumeAsStream(),
             nonce,
-            formState
+            formState,
+            requestId
           ),
           isStaticGeneration: true,
           isBuildTimePrerendering:
@@ -4748,7 +4757,8 @@ async function prerenderToStream(
           inlinedDataStream: createInlinedDataReadableStream(
             flightStream,
             nonce,
-            formState
+            formState,
+            requestId
           ),
           isStaticGeneration: true,
           isBuildTimePrerendering:
