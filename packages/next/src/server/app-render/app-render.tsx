@@ -2630,7 +2630,11 @@ async function renderToStream(
 
 function createDebugChannel(
   sendReactDebugChunk:
-    | ((chunk: Uint8Array, htmlRequestId: string, requestId: string) => void)
+    | ((
+        chunk: Uint8Array | null,
+        htmlRequestId: string,
+        requestId: string
+      ) => void)
     | undefined,
   htmlRequestId: string,
   requestId: string,
@@ -2657,6 +2661,8 @@ function createDebugChannel(
         sendReactDebugChunk(chunk, htmlRequestId, requestId)
       },
       close() {
+        // A null chunk signals to the client that no more chunks will be sent.
+        sendReactDebugChunk(null, htmlRequestId, requestId)
         readableController?.close()
       },
     }),
