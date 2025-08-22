@@ -792,5 +792,9 @@
   "791": "Unexpected match for a pathname \"%s\" with a param \"%s\" of type \"%s\"",
   "792": "Unexpected empty path segments match for a pathname \"%s\" with param \"%s\" of type \"%s\"",
   "793": "No value found for segment key: \"%s\"",
-  "794": "Invalid <Link> with <a> child. Please remove <a>.\nLearn more: https://nextjs.org/docs/messages/invalid-new-link-with-extra-anchor"
+  "794": "Invalid <Link> with <a> child. Please remove <a>.\nLearn more: https://nextjs.org/docs/messages/invalid-new-link-with-extra-anchor",
+  "795": "No debug channel controller found for request ID: %s",
+  "796": "Did not start HotReloaderWebpack.",
+  "797": "Expected a request ID to be defined for the document via self.__next_r.",
+  "798": "Expected a %s response header."
 }
