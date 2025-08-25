@@ -717,7 +717,7 @@ pub(crate) async fn analyse_ecmascript_module_internal(
     let handler = Handler::with_emitter(true, false, Box::new(emitter));
 
     let mut var_graph = {
-        let _span = tracing::info_span!("analyze variable values");
+        let _span = tracing::info_span!("analyze variable values").entered();
         set_handler_and_globals(&handler, globals, || create_graph(program, eval_context))
     };
 
@@ -1058,6 +1058,7 @@ pub(crate) async fn analyse_ecmascript_module_internal(
 
             match effect {
                 Effect::Unreachable { start_ast_path } => {
+                    let _tracing_span = tracing::info_span!("handle unrechable").entered();
                     analysis.add_code_gen(Unreachable::new(AstPathRange::StartAfter(
                         start_ast_path.to_vec(),
                     )));
@@ -1073,9 +1074,17 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                     // (e.g. function calls)
                     let condition_has_side_effects = condition.has_side_effects();
 
-                    let condition = analysis_state
-                        .link_value(*condition, ImportAttributes::empty_ref())
-                        .await?;
+                    let tracing_span = tracing::info_span!("handle conditional");
+
+                    let condition = async {
+                        analysis_state
+                            .link_value(*condition, ImportAttributes::empty_ref())
+                            .await
+                    }
+                    .instrument(tracing_span.clone())
+                    .await?;
+
+                    let _ = tracing_span.entered();
 
                     macro_rules! inactive {
                         ($block:ident) => {
@@ -1234,21 +1243,30 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                         continue;
                     }
 
-                    let func = analysis_state
-                        .link_value(*func, eval_context.imports.get_attributes(span))
-                        .await?;
+                    let tracing_span = tracing::info_span!("handle call");
+                    let func = async {
+                        analysis_state
+                            .link_value(*func, eval_context.imports.get_attributes(span))
+                            .await
+                    }
+                    .instrument(tracing_span.clone())
+                    .await?;
 
-                    handle_call(
-                        &ast_path,
-                        span,
-                        func,
-                        args,
-                        &analysis_state,
-                        &add_effects,
-                        &mut analysis,
-                        in_try,
-                        new,
-                    )
+                    async {
+                        handle_call(
+                            &ast_path,
+                            span,
+                            func,
+                            args,
+                            &analysis_state,
+                            &add_effects,
+                            &mut analysis,
+                            in_try,
+                            new,
+                        )
+                        .await
+                    }
+                    .instrument(tracing_span)
                     .await?;
                 }
                 Effect::MemberCall {
@@ -1260,18 +1278,26 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                     in_try,
                     new,
                 } => {
+                    // Intentionally not awaited because `handle_member` reads this only when
+                    // needed
                     if let Some(ignored) = &ignore_effect_span
                         && *ignored == span
                     {
                         continue;
                     }
 
-                    let func = analysis_state
-                        .link_value(
-                            JsValue::member(obj.clone(), prop),
-                            eval_context.imports.get_attributes(span),
-                        )
-                        .await?;
+                    let tracing_span = tracing::info_span!("handle member call");
+
+                    let func = async {
+                        analysis_state
+                            .link_value(
+                                JsValue::member(obj.clone(), prop),
+                                eval_context.imports.get_attributes(span),
+                            )
+                            .await
+                    }
+                    .instrument(tracing_span.clone())
+                    .await?;
 
                     if !new
                         && matches!(
@@ -1291,9 +1317,13 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                             .link_value(*obj, eval_context.imports.get_attributes(span))
                             .await?
                     {
-                        *value = analysis_state
-                            .link_value(take(value), ImportAttributes::empty_ref())
-                            .await?;
+                        *value = async {
+                            analysis_state
+                                .link_value(take(value), ImportAttributes::empty_ref())
+                                .await
+                        }
+                        .instrument(tracing_span.clone())
+                        .await?;
                         if let JsValue::Function(_, func_ident, _) = value {
                             let mut closure_arg = JsValue::alternatives(take(values));
                             if mutable {
@@ -1314,17 +1344,21 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                         }
                     }
 
-                    handle_call(
-                        &ast_path,
-                        span,
-                        func,
-                        args,
-                        &analysis_state,
-                        &add_effects,
-                        &mut analysis,
-                        in_try,
-                        new,
-                    )
+                    async {
+                        handle_call(
+                            &ast_path,
+                            span,
+                            func,
+                            args,
+                            &analysis_state,
+                            &add_effects,
+                            &mut analysis,
+                            in_try,
+                            new,
+                        )
+                        .await
+                    }
+                    .instrument(tracing_span)
                     .await?;
                 }
                 Effect::FreeVar {
@@ -1333,15 +1367,22 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                     span,
                     in_try: _,
                 } => {
-                    // FreeVar("require") might be turbopackIgnore-d
-                    if !analysis_state
-                        .link_value(*var.clone(), eval_context.imports.get_attributes(span))
-                        .await?
-                        .is_unknown()
-                    {
-                        handle_free_var(&ast_path, *var, span, &analysis_state, &mut analysis)
-                            .await?;
+                    let analysis = &mut analysis;
+                    let analysis_state = &analysis_state;
+                    async move {
+                        // FreeVar("require") might be turbopackIgnore-d
+                        if !analysis_state
+                            .link_value(*var.clone(), eval_context.imports.get_attributes(span))
+                            .await?
+                            .is_unknown()
+                        {
+                            handle_free_var(&ast_path, *var, span, analysis_state, analysis)
+                                .await?;
+                        }
+                        anyhow::Ok(())
                     }
+                    .instrument(tracing::info_span!("handle free var"))
+                    .await?;
                 }
                 Effect::Member {
                     obj,
@@ -1378,75 +1419,89 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                         continue;
                     };
 
-                    if let Some("__turbopack_module_id__") = export.as_deref() {
-                        analysis.add_reference_code_gen(
-                            EsmModuleIdAssetReference::new(*r),
-                            ast_path.into(),
-                        )
-                    } else {
-                        if matches!(
-                            options.tree_shaking_mode,
-                            Some(TreeShakingMode::ReexportsOnly)
-                        ) {
-                            let original_reference = r.await?;
-                            if original_reference.export_name.is_none()
-                                && export.is_some()
-                                && let Some(export) = export
-                            {
-                                // Rewrite `import * as ns from 'foo'; foo.bar()` to behave like
-                                // `import {bar} from 'foo'; bar()` for tree shaking purposes.
-                                let named_reference = analysis
-                                    .add_esm_reference_namespace_resolved(
-                                        esm_reference_index,
-                                        export.clone(),
-                                        || {
-                                            EsmAssetReference::new(
-                                                original_reference.origin,
-                                                original_reference.request,
-                                                original_reference.issue_source,
-                                                original_reference.annotations.clone(),
-                                                Some(ModulePart::export(export.clone())),
-                                                original_reference.import_externals,
-                                            )
-                                            .resolved_cell()
-                                        },
-                                    );
-                                analysis.add_code_gen(EsmBinding::new_keep_this(
-                                    named_reference,
-                                    Some(export),
-                                    ast_path.into(),
-                                ));
-                                continue;
-                            }
+                    let analysis = &mut analysis;
+                    let tree_shaking_mode = options.tree_shaking_mode;
+                    async move {
+                        if let Some("__turbopack_module_id__") = export.as_deref() {
+                            analysis.add_reference_code_gen(
+                                EsmModuleIdAssetReference::new(*r),
+                                ast_path.into(),
+                            )
+                        } else if matches!(tree_shaking_mode, Some(TreeShakingMode::ReexportsOnly))
+                            && let original_reference = r.await?
+                            && original_reference.export_name.is_none()
+                            && export.is_some()
+                            && let Some(export) = export
+                        {
+                            // Rewrite `import * as ns from 'foo'; foo.bar()` to behave like
+                            // `import {bar} from 'foo'; bar()` for tree shaking purposes.
+                            let named_reference = analysis.add_esm_reference_namespace_resolved(
+                                esm_reference_index,
+                                export.clone(),
+                                || {
+                                    EsmAssetReference::new(
+                                        original_reference.origin,
+                                        original_reference.request,
+                                        original_reference.issue_source,
+                                        original_reference.annotations.clone(),
+                                        Some(ModulePart::export(export.clone())),
+                                        original_reference.import_externals,
+                                    )
+                                    .resolved_cell()
+                                },
+                            );
+                            analysis.add_code_gen(EsmBinding::new_keep_this(
+                                named_reference,
+                                Some(export),
+                                ast_path.into(),
+                            ));
+                        } else {
+                            analysis.add_esm_reference(esm_reference_index);
+                            analysis.add_code_gen(EsmBinding::new(*r, export, ast_path.into()));
                         }
 
-                        analysis.add_esm_reference(esm_reference_index);
-                        analysis.add_code_gen(EsmBinding::new(*r, export, ast_path.into()));
+                        anyhow::Ok(())
                     }
+                    .instrument(tracing::info_span!("handle typeof"))
+                    .await?;
                 }
                 Effect::TypeOf {
                     arg,
                     ast_path,
                     span,
                 } => {
-                    let arg = analysis_state
-                        .link_value(*arg, ImportAttributes::empty_ref())
-                        .await?;
-                    handle_typeof(&ast_path, arg, span, &analysis_state, &mut analysis).await?;
+                    let analysis = &mut analysis;
+                    let analysis_state = &analysis_state;
+                    async move {
+                        let arg = analysis_state
+                            .link_value(*arg, ImportAttributes::empty_ref())
+                            .await?;
+                        handle_typeof(&ast_path, arg, span, analysis_state, analysis).await?;
+                        anyhow::Ok(())
+                    }
+                    .instrument(tracing::info_span!("handle typeof"))
+                    .await?;
                 }
                 Effect::ImportMeta {
                     ast_path,
                     span: _,
                     in_try: _,
                 } => {
-                    if analysis_state.first_import_meta {
-                        analysis_state.first_import_meta = false;
-                        analysis.add_code_gen(ImportMetaBinding::new(
-                            source.ident().path().owned().await?,
-                        ));
-                    }
+                    let analysis = &mut analysis;
+                    let analysis_state = &mut analysis_state;
+                    async move {
+                        if analysis_state.first_import_meta {
+                            analysis_state.first_import_meta = false;
+                            analysis.add_code_gen(ImportMetaBinding::new(
+                                source.ident().path().owned().await?,
+                            ));
+                        }
 
-                    analysis.add_code_gen(ImportMetaRef::new(ast_path.into()));
+                        analysis.add_code_gen(ImportMetaRef::new(ast_path.into()));
+                        anyhow::Ok(())
+                    }
+                    .instrument(tracing::info_span!("handle typeof"))
+                    .await?;
                 }
             }
         }
