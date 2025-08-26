@@ -451,7 +451,9 @@ export function generateValidatorFile(
   const handler = {} as typeof import(${JSON.stringify(
     importPath.replace(/\.tsx?$/, '.js')
   )})
-  handler satisfies ${typeWithRoute}
+  type __Check = __Assert<typeof handler extends ${typeWithRoute} ? true : false>
+  // @ts-ignore
+  type __Unused = __Check
 }`
       })
       .join('\n\n')
@@ -622,7 +624,8 @@ export function generateValidatorFile(
 // This file validates that all pages and layouts export the correct types
 
 ${routeImportStatement}
-${metadataImport}${nextRequestImport}
+${metadataImport}${nextRequestImport}type __Assert<T extends true> = T
+
 ${typeDefinitions}
 ${appPageValidations}
 
