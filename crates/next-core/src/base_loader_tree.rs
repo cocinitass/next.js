@@ -99,7 +99,7 @@ impl BaseLoaderTreeBuilder {
         self.imports.push(
             formatdoc!(
                 r#"
-                import * as {} from "MODULE_{}";
+                const {} = import("MODULE_{}");
                 "#,
                 identifier,
                 i
