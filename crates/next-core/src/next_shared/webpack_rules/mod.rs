@@ -196,9 +196,7 @@ pub async fn webpack_loader_options(
     next_config: Vc<NextConfig>,
     builtin_conditions: BTreeSet<WebpackLoaderBuiltinCondition>,
 ) -> Result<Option<ResolvedVc<WebpackLoadersOptions>>> {
-    let mut rules = *next_config
-        .webpack_rules(builtin_conditions.clone(), project_path.clone())
-        .await?;
+    let mut rules = *next_config.webpack_rules(project_path.clone()).await?;
     rules = *maybe_add_sass_loader(next_config.sass_config(), rules.map(|v| *v)).await?;
     if !builtin_conditions.contains(&WebpackLoaderBuiltinCondition::Foreign) {
         rules = *maybe_add_babel_loader(project_path.clone(), rules.map(|v| *v)).await?;

@@ -278,16 +278,11 @@ export type TurbopackRuleCondition =
       content?: RegExp
     }
 
-export type TurbopackRuleConfigItemOptions = {
+export type TurbopackRuleConfigItem = {
   loaders: TurbopackLoaderItem[]
   as?: string
   condition?: TurbopackRuleCondition
 }
-
-export type TurbopackRuleConfigItem =
-  | TurbopackRuleConfigItemOptions
-  | { [condition in TurbopackLoaderBuiltinCondition]?: TurbopackRuleConfigItem }
-  | false
 
 export type TurbopackRuleConfigItemOrShortcut =
   | TurbopackLoaderItem[]

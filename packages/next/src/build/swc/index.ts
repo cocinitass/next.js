@@ -15,7 +15,6 @@ import type {
   TurbopackLoaderItem,
   TurbopackRuleCondition,
   TurbopackRuleConfigItem,
-  TurbopackRuleConfigItemOptions,
   TurbopackRuleConfigItemOrShortcut,
 } from '../../server/config-shared'
 import { isDeepStrictEqual } from 'util'
@@ -836,29 +835,32 @@ function bindingToApi(
 
         for (const key of ruleKeys) {
           nextConfig.turbopack.conditions[`#reactCompiler/${key}`] = {
-            path: key,
-            content:
-              options.compilationMode === 'annotation'
-                ? /['"]use memo['"]/
-                : !options.compilationMode ||
-                    options.compilationMode === 'infer'
-                  ? // Matches declaration or useXXX or </ (closing jsx) or /> (self closing jsx)
-                    /['"]use memo['"]|\Wuse[A-Z]|<\/|\/>/
-                  : undefined,
+            all: [
+              'browser',
+              { not: 'foreign' },
+              {
+                path: key,
+                content:
+                  options.compilationMode === 'annotation'
+                    ? /['"]use memo['"]/
+                    : !options.compilationMode ||
+                        options.compilationMode === 'infer'
+                      ? // Matches declaration or useXXX or </ (closing jsx) or /> (self closing jsx)
+                        /['"]use memo['"]|\Wuse[A-Z]|<\/|\/>/
+                      : undefined,
+              },
+            ],
           }
           nextConfig.turbopack.rules[`#reactCompiler/${key}`] = {
-            browser: {
-              foreign: false,
-              loaders: [
-                getReactCompilerLoader(
-                  reactCompilerOptions,
-                  projectPath,
-                  nextConfig.dev,
-                  /* isServer */ false,
-                  /* reactCompilerExclude */ undefined
-                ),
-              ],
-            },
+            loaders: [
+              getReactCompilerLoader(
+                reactCompilerOptions,
+                projectPath,
+                nextConfig.dev,
+                /* isServer */ false,
+                /* reactCompilerExclude */ undefined
+              ),
+            ],
           }
         }
       }
@@ -1034,23 +1036,11 @@ function bindingToApi(
     ): any {
       if (!rule) return rule
       let serializedRule: any = rule
-      if ('loaders' in rule) {
-        const narrowedRule = rule as TurbopackRuleConfigItemOptions
-        checkLoaderItems(narrowedRule.loaders, glob)
-        if (narrowedRule.condition != null) {
-          serializedRule = {
-            ...rule,
-            condition: serializeRuleCondition(narrowedRule.condition),
-          }
-        }
-      } else {
-        serializedRule = {}
-        for (const [key, value] of Object.entries(rule)) {
-          if (typeof value === 'object' && value) {
-            serializedRule[key] = serializeConfigItem(value, glob)
-          } else {
-            serializedRule[key] = value
-          }
+      checkLoaderItems(rule.loaders, glob)
+      if (rule.condition != null) {
+        serializedRule = {
+          ...rule,
+          condition: serializeRuleCondition(rule.condition),
         }
       }
       return serializedRule
